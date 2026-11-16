@@ -283,6 +283,44 @@ const SUPABASE_KEY = "sb_publishable_GQca5ruj4r-uOuP5ciPwGA_5uI0yLrk";   // 填 
       hearting = false;
     }, 1500);
   }
+  // ===== 点赞音效：两段不轮流，按是不是今天第一次点赞来分 =====
+  // 音频文件（放在网站根目录，和 bg.mp3 同一级）：
+  //   like1.mp3 —— 今天第一次点赞（真正加 1 的那次）播放
+  //   like2.mp3 —— 今天已经点过赞、再点时播放
+  // 文件还没传上来时不报错、不影响点赞和背景音。
+  const likeSounds = ["like1.mp3", "like2.mp3"].map(src => {
+    const a = new Audio(src);
+    a.preload = "auto";
+    return a;
+  });
+  let likeAudio = null;     // 当前正在播的点赞音效
+  let bgmWasPlaying = false;
+  function onLikeSoundEnd() {
+    if (likeAudio) { try { likeAudio.removeEventListener("ended", onLikeSoundEnd); } catch (e) {} likeAudio = null; }
+    // 只有之前背景音在播、且用户中途没手动暂停，才恢复
+    if (bgmWasPlaying && !userPaused && !playing) {
+      if (synth) { try { synth.ctx.resume(); } catch (e) {} setUI(true); }
+      else play().catch(() => {});
+    }
+    bgmWasPlaying = false;
+  }
+  function playLikeSound(which) {   // which：1 = 第一段，2 = 第二段
+    try {
+      // 上一段还没播完，先停掉，避免重叠；但要保留“背景音本来在播”这个状态，
+      // 否则连点两次时第二段播完背景音就再也不恢复了
+      const interrupted = likeAudio !== null;
+      const prevBgmWasPlaying = bgmWasPlaying;
+      if (likeAudio) { try { likeAudio.pause(); likeAudio.removeEventListener("ended", onLikeSoundEnd); } catch (e) {} likeAudio = null; }
+      const snd = likeSounds[(which === 2 ? 1 : 0)];
+      bgmWasPlaying = playing || (interrupted && prevBgmWasPlaying);   // 记下播之前背景音是不是在播
+      if (playing) pause();   // 背景音暂停（含合成音）
+      likeAudio = snd;
+      try { snd.currentTime = 0; } catch (e) {}
+      snd.addEventListener("ended", onLikeSoundEnd, { once: true });
+      const p = snd.play();
+      if (p && p.catch) p.catch(() => { onLikeSoundEnd(); });  // 文件不存在/播不了：直接恢复背景音
+    } catch (e) { onLikeSoundEnd(); }
+  }
   const today = () => { const d = new Date(), p = n => String(n).padStart(2, "0"); return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()); };
   let data = { date: "", total: 0 };          // date：最近一次点赞的日期；total：这个浏览器累计点了几次
   try {
@@ -308,7 +346,7 @@ const SUPABASE_KEY = "sb_publishable_GQca5ruj4r-uOuP5ciPwGA_5uI0yLrk";   // 填 
     num.textContent = (LIKE_BASE + (serverTotal !== null ? serverTotal : data.total)).toLocaleString();
     btn.classList.toggle("liked", on);
     tip.classList.toggle("on", on);
-    tip.textContent = on ? "今天已点赞，谢谢支持！" : "点个赞支持一下吧！";
+    tip.textContent = on ? "你的点赞，是这片星空里最亮的一颗，谢谢你。" : "点个赞支持一下吧！";
   };
   function effects() {
     const r = btn.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
@@ -328,10 +366,12 @@ const SUPABASE_KEY = "sb_publishable_GQca5ruj4r-uOuP5ciPwGA_5uI0yLrk";   // 填 
   }
   btn.addEventListener("click", () => {
     showHeart();
-    if (likedToday()) {                // 今天点过了：只提示，不再加 1
+    if (likedToday()) {                // 今天点过了：播第二段，只提示，不再加 1
+      playLikeSound(2);
       btn.classList.remove("shake"); void btn.offsetWidth; btn.classList.add("shake");
-      tip.textContent = "今天已经点过赞啦，明天再来哦！"; return;
+      tip.textContent = "谢谢你的喜欢，愿你我都能在热爱里闪闪发光。"; return;
     }
+    playLikeSound(1);   // 今天第一次点赞：播第一段
     data = { date: today(), total: data.total + 1 };
     try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) {}
     if (serverTotal !== null) serverTotal += 1;          // 先立刻显示 +1
