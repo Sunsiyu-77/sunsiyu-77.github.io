@@ -305,15 +305,13 @@ const SUPABASE_KEY = "sb_publishable_GQca5ruj4r-uOuP5ciPwGA_5uI0yLrk";   // 填 
     bgmWasPlaying = false;
   }
   function playLikeSound(which) {   // which：1 = 第一段，2 = 第二段
+    // 已经在播一段点赞音效时，直接忽略新的请求，不叠加、不打断、不换段
+    // 这样一次点按最多只播一段，绝不会出现一段没播完又来一段
+    if (likeAudio) return;
     try {
-      // 上一段还没播完，先停掉，避免重叠；但要保留“背景音本来在播”这个状态，
-      // 否则连点两次时第二段播完背景音就再也不恢复了
-      const interrupted = likeAudio !== null;
-      const prevBgmWasPlaying = bgmWasPlaying;
-      if (likeAudio) { try { likeAudio.pause(); likeAudio.removeEventListener("ended", onLikeSoundEnd); } catch (e) {} likeAudio = null; }
       const snd = likeSounds[(which === 2 ? 1 : 0)];
-      bgmWasPlaying = playing || (interrupted && prevBgmWasPlaying);   // 记下播之前背景音是不是在播
-      if (playing) pause();   // 背景音暂停（含合成音）
+      bgmWasPlaying = playing;   // 记下播之前背景音是不是在播
+      if (bgmWasPlaying) pause();   // 背景音暂停（含合成音）
       likeAudio = snd;
       try { snd.currentTime = 0; } catch (e) {}
       snd.addEventListener("ended", onLikeSoundEnd, { once: true });
