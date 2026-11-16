@@ -364,7 +364,12 @@ const SUPABASE_KEY = "sb_publishable_GQca5ruj4r-uOuP5ciPwGA_5uI0yLrk";   // 填 
       add(h, 1500);
     }
   }
+  let lastLikeAt = 0;
   btn.addEventListener("click", () => {
+    // 防止一次点按触发两次（iOS 上点按有时会重复触发 click）：500ms 内重复点击直接忽略
+    const now = Date.now();
+    if (now - lastLikeAt < 500) return;
+    lastLikeAt = now;
     showHeart();
     if (likedToday()) {                // 今天点过了：播第二段，只提示，不再加 1
       playLikeSound(2);
